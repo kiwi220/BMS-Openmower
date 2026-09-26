@@ -1,0 +1,2 @@
+# ROS Noetic runs Python 3.8; bleak 0.22.x is the last series supporting it.
+bleak>=0.20,<0.23
