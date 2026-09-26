@@ -1,0 +1,10 @@
+<launch>
+  <arg name="config" default="$(find jk_bms_ble)/config/jk_bms.yaml"/>
+  <arg name="bms_mac_address" default=""/>
+
+  <node pkg="jk_bms_ble" type="jk_bms_node" name="jk_bms_ble" output="screen" respawn="true" respawn_delay="10">
+    <rosparam command="load" file="$(arg config)"/>
+    <!-- allows: roslaunch jk_bms_ble jk_bms.launch bms_mac_address:=C8:47:80:xx:xx:xx -->
+    <param if="$(eval bms_mac_address != '')" name="bms_mac_address" value="$(arg bms_mac_address)"/>
+  </node>
+</launch>
