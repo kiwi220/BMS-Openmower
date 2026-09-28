@@ -22,8 +22,10 @@ from sensor_msgs.msg import BatteryState
 from . import battery_logic as bl
 from . import conversion
 from .bridge_client import BridgeClient
-from .config import COMBINED_NAME, DeviceConfig, parse_bms_list, parse_pack_connection
+from .config import (COMBINED_NAME, DeviceConfig, parse_bms_list, parse_pack_connection,
+                     parse_xbot_rate, parse_xbot_sensor_bms)
 from .model import BmsSample
+from .xbot_sensors import XbotSensorPublisher
 
 # /ll/power is published by mower_comms and carries the charger voltage used for
 # dock detection; a second publisher there would break docking.
@@ -146,6 +148,10 @@ class BmsNode:
         if bool(rospy.get_param("~publish_diagnostics", True)):
             self.diag_pub = rospy.Publisher("/diagnostics", DiagnosticArray, queue_size=1)
 
+        self.xbot = None
+        if bool(rospy.get_param("~publish_xbot_sensors", True)):
+            self._setup_xbot_sensors()
+
         self.bms_pub = self.bms_msg_cls = None
         status_topic = str(rospy.get_param("~openmower_status_topic", "")).strip()
         if status_topic:
@@ -173,6 +179,26 @@ class BmsNode:
         self.bms_msg_cls = Bms
         self.bms_pub = rospy.Publisher(topic, Bms, queue_size=1)
         rospy.loginfo("Publishing mower_msgs/Bms of '%s' on %s", self.primary.cfg.name, self.bms_pub.resolved_name)
+
+    def _setup_xbot_sensors(self) -> None:
+        rate = parse_xbot_rate(rospy.get_param("~xbot_sensors_rate_hz", 1.0))
+        devices = parse_xbot_sensor_bms(rospy.get_param("~xbot_sensor_bms", ""), [d.cfg for d in self.devices])
+        if not devices:
+            rospy.logwarn("xbot sensors disabled: no BMS is primary; set xbot_sensor_bms to a name or 'all'")
+            return
+        try:
+            from xbot_msgs.msg import SensorDataDouble, SensorDataString, SensorInfo  # open_mower_ros only
+        except ImportError:
+            rospy.logwarn(
+                "xbot sensors disabled: xbot_msgs is not importable (source the open_mower_ros workspace "
+                "or set publish_xbot_sensors: false)"
+            )
+            return
+        self.xbot = XbotSensorPublisher(devices, rospy.Publisher, SensorInfo, SensorDataDouble, SensorDataString, rate)
+        rospy.loginfo(
+            "Publishing %d xbot_monitoring sensors for %s at %.1f Hz",
+            len(self.xbot.sensor_ids), ", ".join(d.name for d in devices), rate,
+        )
 
     # ------------------------------------------------------------------ main loop
 
@@ -270,8 +296,10 @@ class BmsNode:
         stamp = rospy.Time.now()
         states: List[BatteryState] = []
         statuses = []
+        stale_by_name: Dict[str, bool] = {}
         for dev in self.devices:
             stale = dev.is_stale(now, self.stale_timeout)
+            stale_by_name[dev.cfg.name] = stale
             if stale and dev.sample is not None and not dev.stale_reported:
                 dev.stale_reported = True
                 rospy.logwarn(
@@ -300,6 +328,14 @@ class BmsNode:
                 )
             else:
                 rospy.loginfo_throttle(30.0, "battery_state/combined waits for data from all BMS")
+
+        if self.xbot is not None and self.xbot.due(now):
+            for dev in self.devices:
+                if dev.cfg in self.xbot.devices:
+                    added = self.xbot.update(dev.cfg, dev.sample)
+                    if added:
+                        rospy.loginfo("xbot sensors added: %s", ", ".join(added))
+                    self.xbot.publish(dev.cfg, dev.sample, dev.connected, stale_by_name[dev.cfg.name], stamp)
 
         if self.diag_pub is not None:
             array = DiagnosticArray()
