@@ -1,0 +1,7 @@
+<launch>
+  <arg name="config" default="$(find bms_ble)/config/bms.yaml"/>
+
+  <node pkg="bms_ble" type="bms_ble_node" name="bms_ble" output="screen" respawn="true" respawn_delay="10">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

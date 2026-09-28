@@ -1,0 +1,34 @@
+# bms_ble configuration. One entry per BMS; a single entry works the same way.
+bms_list:
+  - name: main_pack               # topic: battery_state/main_pack
+    type: jk                      # jk | ant | ant_leg | ant_new | auto (or an aiobmsble module, e.g. jikong_bms)
+    mac: "AA:BB:CC:DD:EE:FF"      # bluetoothctl scan on -> "JK-BD4A8S-4P"
+    cell_count: 7
+    nominal_capacity_ah: 10.0
+    ble_connect_password: ""      # only used by BMS types that support it in aiobmsble (ANT new)
+    primary: true                 # additionally published on /battery_state
+# - name: second_pack
+#   type: ant                     # "ANT-BLE..." devices; ant_leg / ant_new to force a variant
+#   mac: "11:22:33:44:55:66"
+#   cell_count: 7
+#   nominal_capacity_ah: 10.0
+#   ble_connect_password: ""
+
+publish_rate_hz: 1.0
+openmower_status_topic: ""        # e.g. "/ll/bms" -> mower_msgs/Bms of the primary BMS
+pack_connection: ""               # series | parallel -> battery_state/combined (only with >1 BMS)
+
+# Bridge (Python >= 3.12 with aiobmsble, created by bridge/setup_venv.sh)
+bridge_python: "~/.local/share/bms_ble/venv/bin/python"
+bridge_log_level: "WARNING"       # aiobmsble log level forwarded to rosout
+max_connections: 4                # simultaneous BLE connections allowed on the adapter
+
+# Timing
+reconnect_interval_s: 5.0
+scan_timeout_s: 10.0
+connect_timeout_s: 45.0           # hard limit for connect + first reading
+update_timeout_s: 20.0            # hard limit for each further reading
+stale_timeout_s: 30.0             # after this outage: power_supply_health = UNKNOWN
+
+frame_id: "battery"
+publish_diagnostics: true
