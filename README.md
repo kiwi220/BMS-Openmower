@@ -215,7 +215,7 @@ es, gibt der Node eine Warnung aus und läuft ohne diese Sensoren weiter.
 | Parameter | Default | Beschreibung |
 |---|---|---|
 | `publish_xbot_sensors` | `true` | Feature ein/aus |
-| `xbot_sensors_rate_hz` | `1.0` | Rate der Sensorwerte, höchstens `2.0` (OpenMower drosselt seine eigenen Sensoren ebenfalls auf 2 Hz). Kann nicht schneller sein als `publish_rate_hz`. |
+| `xbot_sensors_rate_hz` | `1.0` | Rate der Sensorwerte, höchstens `2.0` (OpenMower drosselt seine eigenen Sensoren ebenfalls auf 2 Hz). Kann nicht schneller sein als `publish_rate_hz`. Gesendet wird nach festem Zeitplan mit 10 % Toleranz, damit kleine Zeitschwankungen der Schleife keine Durchläufe verwerfen; im Mittel wird die Rate nicht überschritten. |
 | `xbot_sensor_bms` | `""` | `""` = das primäre BMS (ist keins primär: Feature aus, mit Warnung), `all` = alle BMS, oder ein Name aus `bms_list` |
 
 **Sensoren je BMS.** ID-Schema `bms_<name>_<messwert>`, `<name>` in Kleinbuchstaben und nur

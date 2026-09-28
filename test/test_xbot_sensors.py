@@ -2,6 +2,7 @@
 
 import copy
 import os
+import random
 import sys
 import unittest
 
@@ -242,6 +243,31 @@ class PublisherTest(unittest.TestCase):
         self.assertTrue(pub.due(10.0))
         self.assertFalse(pub.due(10.3))
         self.assertTrue(pub.due(10.5))
+
+    @staticmethod
+    def loop(pub, period, n, jitter=0.002, seed=1):
+        rnd = random.Random(seed)
+        return sum(pub.due(100.0 + i * period + rnd.uniform(-jitter, jitter)) for i in range(n))
+
+    def test_jitter_does_not_drop_cycles(self):
+        # loop and sensor rate both 1 Hz: every iteration must publish, even if
+        # it arrives a few ms early (previously ~1/3 of the cycles were dropped)
+        pub, _ = self.make(rate=1.0)
+        self.assertGreaterEqual(self.loop(pub, 1.0, 1000), 990)
+
+    def test_still_throttles_faster_loop(self):
+        # 10 Hz loop, 1 Hz sensor rate: about every tenth iteration publishes
+        pub, _ = self.make(rate=1.0)
+        published = self.loop(pub, 0.1, 1000)
+        self.assertGreaterEqual(published, 99)
+        self.assertLessEqual(published, 101)
+
+    def test_no_burst_after_pause(self):
+        pub, _ = self.make(rate=1.0)
+        self.assertTrue(pub.due(0.0))
+        self.assertTrue(pub.due(10.0))   # loop stalled for 10 s
+        self.assertFalse(pub.due(10.1))  # no catch-up of the missed periods
+        self.assertTrue(pub.due(11.0))
 
 
 class ConfigTest(unittest.TestCase):
