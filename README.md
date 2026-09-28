@@ -422,6 +422,18 @@ Ohne open_mower_ros-Workspace fehlen `mower_msgs` und `xbot_msgs`: Der Node läu
      (MowBite zeigt dort weiter den letzten Wert)
    - nach dem Wiedereinschalten automatischer Reconnect und wieder `OK`
 
+## Lizenz
+
+Dieses Paket steht unter der **GNU General Public License v3.0** (`GPL-3.0-only`), siehe
+[`LICENSE`](LICENSE).
+
+- [aiobmsble](https://pypi.org/p/aiobmsble/) (Apache-2.0) wird als eigenständige Bibliothek in
+  einem separaten Prozess (der Bridge) verwendet und nicht mitgeliefert; `bridge/setup_venv.sh`
+  installiert es aus PyPI.
+- Die Testframes in `test/fixtures.py` stammen aus
+  [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) (Apache-2.0); der
+  Herkunftshinweis steht in der Datei.
+
 ## Referenzen
 
 - [patman15/BMS_BLE-HA](https://github.com/patman15/BMS_BLE-HA) / [aiobmsble](https://pypi.org/p/aiobmsble/) (Apache-2.0)
