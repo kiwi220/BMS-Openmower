@@ -32,6 +32,10 @@ STRING = "string"
 # the concrete cell chemistry and BMS settings.
 CELL_DISPLAY_RANGE = (2.5, 4.2)
 
+# A loop iteration may come this fraction of the period early and still publish,
+# so timing jitter of the ROS loop does not drop every other cycle.
+JITTER_TOLERANCE = 0.1
+
 Value = Union[float, str]
 
 
@@ -224,7 +228,7 @@ class XbotSensorPublisher:
         self._factory = publisher_factory
         self._info_cls, self._double_cls, self._string_cls = info_cls, double_cls, string_cls
         self._period = 1.0 / rate_hz
-        self._last: Optional[float] = None
+        self._next_due: Optional[float] = None
         self._defs: Dict[str, SensorDef] = {}
         self._pubs: Dict[str, Any] = {}      # sensor_id -> data publisher
         self._info_pubs: Dict[str, Any] = {}  # kept alive: latched info
@@ -258,9 +262,17 @@ class XbotSensorPublisher:
         return self._register(sensor_defs(device, self._single, has_mosfet, temps))
 
     def due(self, now: float) -> bool:
-        if self._last is not None and now - self._last < self._period:
+        """True if values should be published now (at most rate_hz on average).
+
+        Fixed schedule instead of "time since last publish": a loop iteration
+        that is only slightly early due to jitter still publishes, but the
+        average rate cannot exceed rate_hz.
+        """
+        if self._next_due is not None and now < self._next_due - JITTER_TOLERANCE * self._period:
             return False
-        self._last = now
+        self._next_due = (now if self._next_due is None else self._next_due) + self._period
+        if self._next_due <= now:  # after a pause: restart the schedule, no burst of catch-up publishes
+            self._next_due = now + self._period
         return True
 
     def publish(self, device: DeviceConfig, sample: Optional[BmsSample], connected: bool, stale: bool,
