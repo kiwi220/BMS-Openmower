@@ -1,10 +1,11 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>jk_bms_ble</name>
-  <version>0.1.0</version>
+  <name>bms_ble</name>
+  <version>0.2.0</version>
   <description>
-    Reads a JK-BMS (Jikong, e.g. JK-BD4A8S4P) via Bluetooth LE and publishes
-    sensor_msgs/BatteryState, optionally mower_msgs/Bms for OpenMower.
+    Reads one or more BLE battery management systems (JK-BMS, ANT-BMS) via the
+    aiobmsble library and publishes sensor_msgs/BatteryState, optionally
+    mower_msgs/Bms for OpenMower.
   </description>
   <maintainer email="info@ki-wi.de">kiwi220</maintainer>
   <license>Apache-2.0</license>
@@ -13,9 +14,11 @@
   <build_depend>python3-catkin-pkg</build_depend>
 
   <exec_depend>rospy</exec_depend>
+  <exec_depend>rospkg</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
-  <!-- bleak has no rosdep key: pip3 install -r requirements.txt -->
+  <!-- aiobmsble/bleak need Python >= 3.12 and have no rosdep keys:
+       bridge/setup_venv.sh creates a separate environment for them. -->
   <!-- mower_msgs (open_mower_ros) is optional and imported at runtime only
        when ~openmower_status_topic is set. -->
 

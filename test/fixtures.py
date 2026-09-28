@@ -64,3 +64,7 @@ CELL_INFO_JK02_24S_V10 = bytes.fromhex(
     "000000000000000000000000000000000000000000000000000000000000000000000000"
     "000000000000000000000043"
 )
+
+# aiobmsble 0.29.0 async_update() output for CELL_INFO_JK02_32S_V11, as sent
+# by bridge/bms_bridge.py (captured with test_bridge_aiobmsble fakes).
+JK_SAMPLE_V11 = {"voltage": 51.689, "current": 0.0, "problem_code": 0, "balance_current": 0.0, "balancer": False, "battery_level": 52, "cycle_charge": 1.043, "design_capacity": 2, "cycles": 0, "battery_health": 100, "chrg_mosfet": True, "dischrg_mosfet": True, "temp_sensors": 255, "cell_count": 16, "delta_voltage": 0.031, "temp_values": [{"value": 17.3, "type": "MOSFET"}, {"value": 17.7, "type": "GENERIC"}, {"value": 17.7, "type": "GENERIC"}, {"value": 17.3, "type": "MOSFET"}, {"value": 17.9, "type": "GENERIC"}, {"value": 18.0, "type": "GENERIC"}], "cell_voltages": [3.246, 3.23, 3.226, 3.231, 3.233, 3.231, 3.232, 3.232, 3.225, 3.232, 3.216, 3.225, 3.237, 3.231, 3.225, 3.242], "battery_charging": False, "temperature": 17.65, "cycle_capacity": 53.912, "power": 0.0, "problem": False}
