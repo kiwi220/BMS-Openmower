@@ -176,6 +176,9 @@ v1.2 gegenprüfen):
 
 ## Erste Inbetriebnahme – Checkliste
 
+Tipp: Die BLE-Punkte lassen sich vorher am PC klären, siehe
+[Hardwaretest am PC ohne ROS](#hardwaretest-am-pc-ohne-ros-windows-oder-linux).
+
 - [ ] `bridge/setup_venv.sh` gibt „aiobmsble OK“ aus
 - [ ] Log: „BMS bridge ready“, dann „BMS 'main_pack' connected (jikong_bms)“ und die Geräteinfo
 - [ ] `/battery_state/main_pack` mit der JK-App vergleichen (Spannung, Strom-Vorzeichen, SoC)
@@ -192,13 +195,76 @@ Mehr Details aus aiobmsble: `bridge_log_level: DEBUG`.
 
 ## Tests
 
+### Unit-Tests (ohne Hardware, ohne ROS, jedes Betriebssystem)
+
 ```bash
 cd test
-# ROS-Seite (Python 3.8 bzw. System-Python), ohne Hardware und ohne ROS
+# ROS-Seite (Python 3.8 bzw. System-Python)
 python3 -m unittest test_config test_battery_logic test_conversion test_bridge_client
 # Bridge gegen das echte aiobmsble mit simuliertem BLE-Client und echten JK-Frames
 ~/.local/share/bms_ble/venv/bin/python -m unittest test_bridge_aiobmsble
 ```
+
+### Hardwaretest am PC ohne ROS (Windows oder Linux)
+
+Die Bridge ist ein normales Python-Programm und läuft auch ohne ROS. So lässt sich vor der
+Installation auf dem Mäher klären, ob die BMS Daten liefern, ob ein Passwort nötig ist und welche
+ANT-Variante erkannt wird.
+
+Voraussetzungen: PC mit Bluetooth LE und Python ≥ 3.12. **macOS geht nicht**, weil macOS keine
+MAC-Adressen herausgibt und die Bridge die Geräte über die MAC sucht.
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/kiwi220/BMS-Openmower.git
+cd BMS-Openmower
+py -3.12 -m venv venv
+venv\Scripts\pip install -r bridge\requirements.txt
+venv\Scripts\python bridge\bms_bridge.py
+```
+
+**Linux:**
+
+```bash
+git clone https://github.com/kiwi220/BMS-Openmower.git && cd BMS-Openmower
+bridge/setup_venv.sh ./venv
+./venv/bin/python bridge/bms_bridge.py
+```
+
+Das Programm wartet danach auf **eine Zeile** mit der Konfiguration. Einfügen (MACs anpassen,
+ein oder beide BMS) und Enter drücken:
+
+```json
+{"devices":[{"name":"jk","type":"jk","mac":"C8:47:80:XX:XX:XX"},{"name":"ant","type":"ant","mac":"AA:BB:CC:XX:XX:XX"}],"log_level":"INFO"}
+```
+
+Pro Gerät sind `name`, `type` (wie in `bms_list`), `mac` und optional `password` möglich. Die
+Bridge gibt dann JSON-Zeilen aus:
+
+| `event` | Bedeutung |
+|---|---|
+| `ready` | Bridge gestartet, mit aiobmsble- und bleak-Version |
+| `log` | Meldungen, z. B. „connected to …“, „identified as …“, „not found“ |
+| `state` | Verbindung auf- oder abgebaut |
+| `device_info` | Modell, Firmware, Seriennummer |
+| `sample` | Messwerte etwa jede Sekunde: `voltage`, `current`, `battery_level` (SoC), `cell_voltages`, `temp_values`, `chrg_mosfet`/`dischrg_mosfet`, `problem_code` |
+
+**Beenden:** Windows Strg+Z, dann Enter; Linux Strg+D. Die Bridge trennt dabei alle BMS sauber.
+
+Hinweise:
+- Die Hersteller-Apps vorher schließen: Ein BMS erlaubt nur eine BLE-Verbindung gleichzeitig.
+- MAC finden: unter Linux `bluetoothctl --timeout 15 scan on`, unter Windows z. B. mit der
+  Handy-App „nRF Connect“ (Gerätename `JK-…` bzw. `ANT-BLE…`).
+- Mehr Details: `"log_level":"DEBUG"` zeigt alle Bytes, die aiobmsble sendet und empfängt.
+- Liefert ein ANT keine Daten: `"password":"1234"` im Geräteeintrag ergänzen bzw. `"type":"ant_leg"`
+  oder `"type":"ant_new"` probieren. Die Einstellung, die funktioniert, genauso in `bms_list` übernehmen.
+- Werte mit der App vergleichen, vor allem Spannung, Vorzeichen des Stroms (+ Laden, − Entladen) und SoC.
+
+### Kompletter ROS-Node am PC
+
+Nur unter Linux mit ROS Noetic (Ubuntu 20.04 oder ein `ros:noetic`-Docker-Container mit
+`-v /run/dbus:/run/dbus`); Ablauf wie unter [Installation](#installation-raspberry-pi-cm4-ros-noetic).
 
 ## Referenzen
 
