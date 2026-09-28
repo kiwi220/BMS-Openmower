@@ -103,3 +103,37 @@ def parse_pack_connection(value: Any) -> str:
     if value not in PACK_CONNECTIONS:
         raise ValueError("pack_connection must be empty, 'series' or 'parallel', got '%s'" % value)
     return value
+
+
+XBOT_MAX_RATE_HZ = 2.0  # OpenMower throttles its own sensors to 2 Hz
+XBOT_ALL = "all"
+
+
+def parse_xbot_rate(value: Any) -> float:
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("xbot_sensors_rate_hz must be a number, got '%s'" % value)
+    if not 0.0 < rate <= XBOT_MAX_RATE_HZ:
+        raise ValueError("xbot_sensors_rate_hz must be > 0 and <= %.1f, got %s" % (XBOT_MAX_RATE_HZ, value))
+    return rate
+
+
+def parse_xbot_sensor_bms(value: Any, devices: List[DeviceConfig]) -> List[DeviceConfig]:
+    """BMS published as xbot_monitoring sensors.
+
+    "" -> the primary BMS (empty list if none is primary), "all" -> all BMS,
+    otherwise the name of one entry of bms_list.
+    """
+    value = str(value or "").strip()
+    if not value:
+        return [d for d in devices if d.primary]
+    if value.lower() == XBOT_ALL:
+        return list(devices)
+    for d in devices:
+        if d.name == value:
+            return [d]
+    raise ValueError(
+        "xbot_sensor_bms '%s' is neither 'all' nor a name from bms_list (%s)"
+        % (value, ", ".join(d.name for d in devices))
+    )

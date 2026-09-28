@@ -18,6 +18,11 @@ publish_rate_hz: 1.0
 openmower_status_topic: ""        # e.g. "/ll/bms" -> mower_msgs/Bms of the primary BMS
 pack_connection: ""               # series | parallel -> battery_state/combined (only with >1 BMS)
 
+# OpenMower sensors (xbot_monitoring -> MQTT -> MowBite etc.); needs xbot_msgs (open_mower_ros)
+publish_xbot_sensors: true
+xbot_sensors_rate_hz: 1.0         # max 2.0
+xbot_sensor_bms: ""               # "" = primary BMS, "all", or a name from bms_list
+
 # Bridge (Python >= 3.12 with aiobmsble, created by bridge/setup_venv.sh)
 bridge_python: "~/.local/share/bms_ble/venv/bin/python"
 bridge_log_level: "WARNING"       # aiobmsble log level forwarded to rosout

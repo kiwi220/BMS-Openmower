@@ -21,6 +21,8 @@
        bridge/setup_venv.sh creates a separate environment for them. -->
   <!-- mower_msgs (open_mower_ros) is optional and imported at runtime only
        when ~openmower_status_topic is set. -->
+  <!-- xbot_msgs (open_mower_ros) is optional as well: imported at runtime only
+       for ~publish_xbot_sensors; without it the node logs a warning and continues. -->
 
   <test_depend>python3-nose</test_depend>
 </package>
