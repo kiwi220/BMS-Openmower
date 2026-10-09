@@ -73,7 +73,9 @@ def battery_state(
     msg.temperature = _or_nan(sample.state_temperature)
     msg.cell_voltage = cells
     msg.power_supply_status = bl.power_supply_status(sample.current, sample.soc)
-    msg.power_supply_health = bl.power_supply_health(sample.vendor, sample.problem_code, sample.problem, stale)
+    msg.power_supply_health = bl.power_supply_health(
+        sample.vendor, sample.problem_code, sample.problem, stale, sample.soc
+    )
     return msg
 
 

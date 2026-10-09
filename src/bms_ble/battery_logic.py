@@ -94,6 +94,11 @@ JBD_HEALTH_GROUPS = (
     (POWER_SUPPLY_HEALTH_COLD, _mask(5, 7)),                   # charge / discharge under temperature
 )
 JBD_PROTECTION_MASK = 0xFFFF
+# Cell overvoltage protection at 100 % SoC means the charge ended through this
+# protection (real capture: 100 %, protection active, charge MOSFET off), so
+# like JK's "Battery is fully charged" it is informational then. Below 100 %
+# (or without SoC) it stays OVERVOLTAGE: a cell hit the limit before the pack counts as full.
+JBD_INFO_WHEN_FULL = _mask(0)
 
 # Severity used when several packs are combined (worst wins)
 HEALTH_SEVERITY = {
@@ -163,7 +168,9 @@ def jk_health(error_bitmask: int) -> int:
     return POWER_SUPPLY_HEALTH_GOOD
 
 
-def jbd_health(protection_status: int) -> int:
+def jbd_health(protection_status: int, state_of_charge: Optional[float] = None) -> int:
+    if state_of_charge is not None and math.isfinite(state_of_charge) and state_of_charge >= 100:
+        protection_status &= ~JBD_INFO_WHEN_FULL
     for health, mask in JBD_HEALTH_GROUPS:
         if protection_status & mask:
             return health
@@ -172,11 +179,14 @@ def jbd_health(protection_status: int) -> int:
     return POWER_SUPPLY_HEALTH_GOOD
 
 
-def power_supply_health(vendor: str, problem_code: int, problem: bool, stale: bool = False) -> int:
+def power_supply_health(
+    vendor: str, problem_code: int, problem: bool, stale: bool = False, state_of_charge: Optional[float] = None
+) -> int:
     """Health of one pack; UNKNOWN when the data is stale.
 
     JK, JBD: problem_code is the vendor's error / protection bitmask ->
-    DEAD / OVERVOLTAGE / OVERHEAT / COLD / UNSPEC_FAILURE.
+    DEAD / OVERVOLTAGE / OVERHEAT / COLD / UNSPEC_FAILURE. For JBD the cell
+    overvoltage bit is informational at 100 % SoC (state_of_charge, %).
     Others (ANT, ...): aiobmsble packs vendor specific status codes into
     problem_code whose byte layout is not documented consistently, so any
     reported problem is mapped to UNSPEC_FAILURE rather than guessed.
@@ -186,7 +196,7 @@ def power_supply_health(vendor: str, problem_code: int, problem: bool, stale: bo
     if vendor == "jk":
         return jk_health(problem_code)
     if vendor == "jbd":
-        return jbd_health(problem_code)
+        return jbd_health(problem_code, state_of_charge)
     if problem_code or problem:
         return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE
     return POWER_SUPPLY_HEALTH_GOOD

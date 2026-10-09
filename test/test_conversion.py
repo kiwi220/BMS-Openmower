@@ -276,14 +276,23 @@ class JbdTest(unittest.TestCase):
         self.assertAlmostEqual(dis.current, -2.5)
         self.assertEqual(dis.power_supply_status, bl.POWER_SUPPLY_STATUS_DISCHARGING)
 
-    def test_real_cell_overvoltage_capture(self):
+    def test_real_cell_overvoltage_capture_at_full_is_informational(self):
+        # real capture: 100 %, cell overvoltage protection ended the charge
         s = jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE)
         msg = state(s, device=DeviceConfig("big", "jbd", "A5:C2:37:00:00:02", 4, 280.0))
-        self.assertEqual(msg.power_supply_health, bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertEqual(msg.power_supply_health, bl.POWER_SUPPLY_HEALTH_GOOD)
+        self.assertEqual(msg.power_supply_status, bl.POWER_SUPPLY_STATUS_FULL)
         self.assertAlmostEqual(msg.voltage, 14.28)
+        # still listed, like JK's "Battery is fully charged" bit
         bms = conversion.bms_message(FakeBms, s, False, "stamp")
         self.assertIn("ALARM: Cell overvoltage", bms.battery_status)
         self.assertEqual(json.loads(bms.extra_data)["problem_code"], 1)
+
+    def test_cell_overvoltage_below_full_stays_overvoltage(self):
+        s = jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE, battery_level=90)
+        self.assertEqual(state(s, device=JBD).power_supply_health, bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        no_soc = jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE, battery_level=None)
+        self.assertEqual(state(no_soc, device=JBD).power_supply_health, bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
 
     def test_stale(self):
         msg = state(jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE), device=JBD, connected=False, stale=True)
