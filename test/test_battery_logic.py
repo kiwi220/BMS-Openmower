@@ -132,6 +132,32 @@ class JbdTest(unittest.TestCase):
     def test_stale(self):
         self.assertEqual(self.health(1 << 0, stale=True), bl.POWER_SUPPLY_HEALTH_UNKNOWN)
 
+    def full(self, code, soc):
+        return bl.power_supply_health("jbd", code, bool(code), state_of_charge=soc)
+
+    def test_cell_overvoltage_at_full_is_informational(self):
+        self.assertEqual(self.full(1 << 0, 100), bl.POWER_SUPPLY_HEALTH_GOOD)
+        self.assertEqual(self.full(1 << 0, 100.0), bl.POWER_SUPPLY_HEALTH_GOOD)
+
+    def test_cell_overvoltage_below_full_or_without_soc(self):
+        self.assertEqual(self.full(1 << 0, 99.9), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertEqual(self.full(1 << 0, None), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertEqual(self.full(1 << 0, float("nan")), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+
+    def test_only_the_cell_overvoltage_bit_is_relaxed(self):
+        self.assertEqual(self.full(1 << 2, 100), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)           # pack overvoltage
+        self.assertEqual(self.full(1 << 0 | 1 << 2, 100), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertEqual(self.full(1 << 0 | 1 << 8, 100), bl.POWER_SUPPLY_HEALTH_UNSPEC_FAILURE)  # + overcurrent
+        self.assertEqual(self.full(1 << 0 | 1 << 4, 100), bl.POWER_SUPPLY_HEALTH_OVERHEAT)
+        self.assertEqual(bl.power_supply_health("jbd", 1 << 0, True, stale=True, state_of_charge=100),
+                         bl.POWER_SUPPLY_HEALTH_UNKNOWN)
+
+    def test_soc_has_no_effect_on_other_vendors(self):
+        self.assertEqual(bl.power_supply_health("jk", 1 << 5, True, state_of_charge=100),
+                         bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertEqual(bl.power_supply_health("ant", 0x2, True, state_of_charge=100),
+                         bl.POWER_SUPPLY_HEALTH_UNSPEC_FAILURE)
+
 
 if __name__ == "__main__":
     unittest.main()

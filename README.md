@@ -183,10 +183,13 @@ Fehlercode, Zyklen und SOH stehen auf `/diagnostics`.
   Übertemperatur → `OVERHEAT`, Untertemperatur → `COLD`. Jedes andere gesetzte Bit (Überstrom,
   Kurzschluss, IC-Fehler, MOSFET-Software-Sperre, Ladezeit-Timeout, undokumentierte Bits) wird als
   `UNSPEC_FAILURE` gemeldet statt ignoriert: Beim JBD bedeutet jedes Bit einen aktiven Schutz.
-  **Hinweis:** Endet das Laden über den Zellüberspannungsschutz des JBD, steht bei vollem Akku
-  `OVERVOLTAGE` an (in `/diagnostics` als Fehler, im xbot-Status z. B. `Full, Cell overvoltage`).
-  Der echte Mitschnitt in `test/fixtures.py` zeigt genau diesen Zustand: 100 %, Schutz aktiv,
-  Lade-MOSFET aus. Gemeldet wird der tatsächliche Schutzzustand des BMS.
+  **Ausnahme Ladeende:** Steht der Zellüberspannungsschutz bei **100 % SoC** an, ist das Laden über
+  diesen Schutz beendet worden (der echte Mitschnitt in `test/fixtures.py` zeigt genau das: 100 %,
+  Schutz aktiv, Lade-MOSFET aus). Dann bleibt die Health `GOOD`, wie beim JK-Bit „Battery is fully
+  charged“. Das Bit wird weiter angezeigt: in `/diagnostics` als Warnung, im xbot-Status als
+  `Full, Cell overvoltage`, in `/ll/bms` unter `battery_status`. Unter 100 % oder ohne SoC-Wert bleibt
+  es `OVERVOLTAGE` (dann hat eine Zelle die Schutzgrenze erreicht, obwohl der Akku nicht als voll gilt). Pack-Überspannung (Bit 2) ist immer
+  `OVERVOLTAGE`.
 - **ANT:** aiobmsble setzt `problem_code` aus MOSFET-Statuscodes zusammen, deren Byte-Reihenfolge
   zwischen den ANT-Varianten nicht eindeutig dokumentiert ist. Jedes gemeldete Problem wird daher
   als `UNSPEC_FAILURE` gemeldet statt geraten; der Rohcode steht in `/diagnostics`.

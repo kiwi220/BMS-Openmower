@@ -370,7 +370,7 @@ class BmsNode:
             errors = bl.error_names(s.vendor, s.problem_code)
             if errors:
                 values.append(("errors", ", ".join(errors)))
-            health = bl.power_supply_health(s.vendor, s.problem_code, s.problem)
+            health = bl.power_supply_health(s.vendor, s.problem_code, s.problem, state_of_charge=s.soc)
             if stale:
                 status.level, status.message = DiagnosticStatus.STALE, "No data for > %.0f s" % self.stale_timeout
             elif health != bl.POWER_SUPPLY_HEALTH_GOOD:
