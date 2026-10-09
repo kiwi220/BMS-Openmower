@@ -154,8 +154,8 @@ def bms_message(msg_cls: Any, sample: BmsSample, stale: bool, stamp: Any) -> Any
         status.append("Fully charged")
     if _finite(sample.current) and sample.current < -bl.CURRENT_THRESHOLD_A:
         status.append("Discharging")
-    if sample.vendor == "jk":
-        status += ["ALARM: %s" % e for e in bl.jk_error_names(sample.problem_code)]
+    if sample.vendor in bl.NAMED_ERROR_VENDORS:
+        status += ["ALARM: %s" % e for e in bl.error_names(sample.vendor, sample.problem_code)]
     elif sample.problem_code or sample.problem:
         status.append("ALARM: problem code 0x%X" % sample.problem_code)
 

@@ -367,7 +367,7 @@ class BmsNode:
                 ("cycles", "NA" if s.cycles is None else s.cycles),
                 ("problem_code", "0x%X" % s.problem_code),
             ]
-            errors = bl.jk_error_names(s.problem_code) if s.vendor == "jk" else []
+            errors = bl.error_names(s.vendor, s.problem_code)
             if errors:
                 values.append(("errors", ", ".join(errors)))
             health = bl.power_supply_health(s.vendor, s.problem_code, s.problem)

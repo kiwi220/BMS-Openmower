@@ -67,5 +67,21 @@ class ConfigTest(unittest.TestCase):
             parse_pack_connection("mixed")
 
 
+class JbdTypeTest(unittest.TestCase):
+    def test_jbd_type_accepted(self):
+        (d,) = parse_bms_list([entry(type="JBD", name="pack_jbd")])
+        self.assertEqual(d.type, "jbd")
+        self.assertEqual(parse_bms_list([entry(type="jbd_bms")])[0].type, "jbd_bms")  # aiobmsble module name
+
+    def test_jk_and_jbd_together(self):
+        devs = parse_bms_list([
+            entry(primary=True),
+            entry(name="pack_jbd", type="jbd", mac="A5:C2:37:00:00:01", cell_count=4, ble_connect_password="123456"),
+        ])
+        self.assertEqual([d.type for d in devs], ["jk", "jbd"])
+        self.assertEqual(devs[1].bridge_dict()["password"], "123456")
+        self.assertEqual(devs[1].bridge_dict()["type"], "jbd")
+
+
 if __name__ == "__main__":
     unittest.main()

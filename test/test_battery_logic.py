@@ -94,5 +94,44 @@ class RosConstantsTest(unittest.TestCase):
                 self.assertEqual(getattr(bl, name), getattr(BatteryState, name), name)
 
 
+class JbdTest(unittest.TestCase):
+    def health(self, code, stale=False, problem=None):
+        return bl.power_supply_health("jbd", code, bool(code) if problem is None else problem, stale)
+
+    def test_error_names(self):
+        self.assertEqual(bl.error_names("jbd", 0x0001), ["Cell overvoltage"])
+        self.assertEqual(bl.error_names("jbd", 1 << 1 | 1 << 3), ["Cell undervoltage", "Pack undervoltage"])
+        self.assertEqual(bl.error_names("jbd", 0), [])
+        self.assertEqual(bl.error_names("jbd", 1 << 14), ["Unknown error bit 14"])
+        self.assertEqual(len(bl.error_names("jbd", 0x1FFF)), 13)   # all documented protection bits
+        self.assertEqual(bl.error_names("ant", 0x203), [])         # layout unknown: no names
+
+    def test_overvoltage_dead_overheat_cold(self):
+        self.assertEqual(self.health(1 << 0), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)   # cell overvoltage
+        self.assertEqual(self.health(1 << 2), bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)   # pack overvoltage
+        self.assertEqual(self.health(1 << 1), bl.POWER_SUPPLY_HEALTH_DEAD)          # cell undervoltage
+        self.assertEqual(self.health(1 << 3), bl.POWER_SUPPLY_HEALTH_DEAD)          # pack undervoltage
+        self.assertEqual(self.health(1 << 4), bl.POWER_SUPPLY_HEALTH_OVERHEAT)      # charge over temperature
+        self.assertEqual(self.health(1 << 6), bl.POWER_SUPPLY_HEALTH_OVERHEAT)      # discharge over temperature
+        self.assertEqual(self.health(1 << 5), bl.POWER_SUPPLY_HEALTH_COLD)          # charge under temperature
+        self.assertEqual(self.health(1 << 7), bl.POWER_SUPPLY_HEALTH_COLD)          # discharge under temperature
+
+    def test_other_protections_are_failures_not_ignored(self):
+        for bit in (8, 9, 10, 11, 12, 13, 14, 15):   # overcurrent, short circuit, IC, lock, timeout, unknown
+            self.assertEqual(self.health(1 << bit), bl.POWER_SUPPLY_HEALTH_UNSPEC_FAILURE, bit)
+
+    def test_priority_and_good(self):
+        self.assertEqual(self.health(0), bl.POWER_SUPPLY_HEALTH_GOOD)
+        self.assertEqual(self.health(1 << 0 | 1 << 3), bl.POWER_SUPPLY_HEALTH_DEAD)
+        self.assertEqual(self.health(1 << 4 | 1 << 8), bl.POWER_SUPPLY_HEALTH_OVERHEAT)
+
+    def test_problem_flag_without_code_is_ignored(self):
+        # aiobmsble also sets "problem" for sanity checks (e.g. 0 Ah remaining)
+        self.assertEqual(self.health(0, problem=True), bl.POWER_SUPPLY_HEALTH_GOOD)
+
+    def test_stale(self):
+        self.assertEqual(self.health(1 << 0, stale=True), bl.POWER_SUPPLY_HEALTH_UNKNOWN)
+
+
 if __name__ == "__main__":
     unittest.main()

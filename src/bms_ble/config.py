@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-BASE_TYPES = ("jk", "ant", "ant_leg", "ant_new", "auto")
+BASE_TYPES = ("jk", "jbd", "ant", "ant_leg", "ant_new", "auto")
 PACK_CONNECTIONS = ("", "series", "parallel")
 COMBINED_NAME = "combined"
 

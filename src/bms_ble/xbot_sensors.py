@@ -124,8 +124,8 @@ def status_text(sample: BmsSample) -> str:
         bl.POWER_SUPPLY_STATUS_DISCHARGING: "Discharging",
         bl.POWER_SUPPLY_STATUS_FULL: "Full",
     }.get(bl.power_supply_status(sample.current, sample.soc))
-    if sample.vendor == "jk":
-        errors = bl.jk_error_names(sample.problem_code)
+    if sample.vendor in bl.NAMED_ERROR_VENDORS:
+        errors = bl.error_names(sample.vendor, sample.problem_code)
     elif sample.problem_code or sample.problem:
         errors = ["problem code 0x%X" % sample.problem_code]
     else:

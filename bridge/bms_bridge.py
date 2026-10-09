@@ -39,7 +39,11 @@ from aiobmsble.utils import bms_cls, bms_identify, bms_supported
 PROTOCOL_VERSION = 1
 
 # config "type" -> aiobmsble module; "ant" and "auto" are resolved at runtime
-TYPE_MODULES = {"jk": "jikong_bms", "ant_leg": "ant_leg_bms", "ant_new": "ant_bms"}
+TYPE_MODULES = {"jk": "jikong_bms", "jbd": "jbd_bms", "ant_leg": "ant_leg_bms", "ant_new": "ant_bms"}
+
+# Many JBD BMS advertise names aiobmsble does not know (e.g. "xiaoxiang BMS"),
+# but they all offer this service. Used for a hint only, never to pick a type.
+JBD_SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb"
 
 log = logging.getLogger("bms_bridge")
 
@@ -190,9 +194,14 @@ class Bridge:
                 log.info("%s: '%s' identified as %s", dev.name, name, module_name(cls))
                 return cls
             if not name.upper().startswith("ANT"):
+                hint = (
+                    "; it advertises the JBD service (ff00), try type: jbd"
+                    if JBD_SERVICE_UUID in [u.lower() for u in adv.service_uuids]
+                    else ""
+                )
                 log.warning(
-                    "%s: device '%s' (%s) not recognized by aiobmsble; set type: jk or ant explicitly",
-                    dev.name, name, dev.mac,
+                    "%s: device '%s' (%s) not recognized by aiobmsble%s; set type: jk, jbd or ant explicitly",
+                    dev.name, name, dev.mac, hint,
                 )
                 return None
             log.warning("%s: '%s' not recognized, name suggests ANT", dev.name, name)

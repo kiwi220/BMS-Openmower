@@ -1,4 +1,4 @@
-# bms_ble – BLE-Batteriemanagement (JK + ANT) für OpenMower (ROS 1 Noetic)
+# bms_ble – BLE-Batteriemanagement (JK, JBD, ANT) für OpenMower (ROS 1 Noetic)
 
 catkin-Paket, das ein oder mehrere BMS per Bluetooth LE ausliest und je BMS als
 `sensor_msgs/BatteryState` publiziert – optional zusätzlich als `mower_msgs/Bms` für die
@@ -6,7 +6,7 @@ OpenMower-Logik. Verbindung und Protokoll übernimmt die Bibliothek
 [aiobmsble](https://pypi.org/p/aiobmsble/) (patman15/BMS_BLE-HA, Apache-2.0); dieses Paket ist
 ein dünner ROS-Wrapper darum.
 
-Unterstützt: **JK-BMS** (z. B. JK-BD4A8S4P, JK02_32S) und **ANT-BMS** (`ANT-BLE…`), weitere
+Unterstützt: **JK-BMS** (z. B. JK-BD4A8S4P, JK02_32S), **JBD-BMS** (Jiabaida, `JBD-…`) und **ANT-BMS** (`ANT-BLE…`), weitere
 aiobmsble-Typen über den Modulnamen.
 
 ## Architektur
@@ -62,7 +62,7 @@ src/bms_ble/bridge/setup_venv.sh            # -> ~/.local/share/bms_ble/venv
 
 # 3. MACs finden. Die Hersteller-Apps vorher schließen: ein BMS akzeptiert
 #    nur eine BLE-Verbindung gleichzeitig!
-bluetoothctl --timeout 15 scan on           # "JK-BD4A8S-4P", "ANT-BLE…"
+bluetoothctl --timeout 15 scan on           # "JK-BD4A8S-4P", "JBD-…", "ANT-BLE…"
 
 # 4. config/bms.yaml anpassen (MACs, cell_count, Kapazität, primary), starten
 roslaunch bms_ble bms_ble.launch
@@ -74,7 +74,7 @@ rostopic list | grep xbot_monitoring/sensors/bms_
 
 Im Log sollten nach dem Start stehen:
 - `BMS bridge ready (aiobmsble …, bleak …)`
-- `BMS '<name>' connected (jikong_bms)` bzw. `(ant_bms)` / `(ant_leg_bms)`
+- `BMS '<name>' connected (jikong_bms)` bzw. `(jbd_bms)` / `(ant_bms)` / `(ant_leg_bms)`
 - `Publishing <N> xbot_monitoring sensors for <name> at 1.0 Hz`, nach den ersten Daten
   `xbot sensors added: bms_<name>_temp_mosfet, …`
 
@@ -108,7 +108,7 @@ vom Image ab.
 ```yaml
 bms_list:
   - name: main_pack               # Topic battery_state/main_pack
-    type: jk                      # jk | ant | ant_leg | ant_new | auto | <aiobmsble-Modul>
+    type: jk                      # jk | jbd | ant | ant_leg | ant_new | auto | <aiobmsble-Modul>
     mac: "AA:BB:CC:DD:EE:FF"
     cell_count: 7
     nominal_capacity_ah: 10.0
@@ -143,12 +143,17 @@ Die alten Einzelparameter (`bms_mac_address`, `cell_count`, …) funktionieren w
 
 **Typen:**
 - `jk`: aiobmsble `jikong_bms`.
+- `jbd`: aiobmsble `jbd_bms`. aiobmsble erkennt JBD nur an bestimmten Namen (`JBD-*` und einige
+  OEM-Namen) und Herstellerkennungen. Meldet sich dein Akku anders, steht bei `type: auto` eine
+  Warnung („not recognized“) und, wenn er den JBD-Dienst `ff00` anbietet, der Hinweis „try type: jbd“.
+  Mit `type: jbd` wird der Name nicht geprüft.
 - `ant`: wählt anhand des Gerätenamens `ant_leg_bms` (`ANT-BLE[01]*`, `ANT-BLE22*`) oder
   `ant_bms` (`ANT?BLE24*`, `ANT?BLE3*`). Passt der Name auf keins (z. B. `ANT-BLEUB…`), gibt es
   eine Warnung und einen Versuch mit `ant_bms`; kommen keine Daten, `type: ant_leg` setzen.
 - `ant_leg` / `ant_new`: ANT-Variante erzwingen.
 - `auto`: Erkennung per aiobmsble über die Advertising-Daten; nicht erkannte `ANT…`-Namen
-  werden wie `ant` behandelt, sonst Warnung und kein Verbindungsversuch.
+  werden wie `ant` behandelt, sonst Warnung und kein Verbindungsversuch. Für den Dauerbetrieb
+  ist ein fester Typ robuster.
 
 ## Nachrichtenbelegung `sensor_msgs/BatteryState`
 
@@ -173,6 +178,11 @@ Fehlercode, Zyklen und SOH stehen auf `/diagnostics`.
 **Health:**
 - **JK:** `problem_code` ist die JK-Fehlerbitmaske → `DEAD` (Zell-/Pack-Unterspannung),
   `OVERVOLTAGE`, `OVERHEAT`, `COLD`, `UNSPEC_FAILURE`; rein informative Bits bleiben `GOOD`.
+- **JBD:** `problem_code` ist der Schutzstatus des JBD (Bits 0–13, Namen aus esphome-jbd-bms):
+  Zell-/Pack-Überspannung → `OVERVOLTAGE`, Zell-/Pack-Unterspannung → `DEAD`, Lade-/Entlade-
+  Übertemperatur → `OVERHEAT`, Untertemperatur → `COLD`. Jedes andere gesetzte Bit (Überstrom,
+  Kurzschluss, IC-Fehler, MOSFET-Software-Sperre, Ladezeit-Timeout, undokumentierte Bits) wird als
+  `UNSPEC_FAILURE` gemeldet statt ignoriert: Beim JBD bedeutet jedes Bit einen aktiven Schutz.
 - **ANT:** aiobmsble setzt `problem_code` aus MOSFET-Statuscodes zusammen, deren Byte-Reihenfolge
   zwischen den ANT-Varianten nicht eindeutig dokumentiert ist. Jedes gemeldete Problem wird daher
   als `UNSPEC_FAILURE` gemeldet statt geraten; der Rohcode steht in `/diagnostics`.
@@ -228,10 +238,13 @@ es, gibt der Node eine Warnung aus und läuft ohne diese Sensoren weiter.
 | `current` | DOUBLE | CURRENT | A | Strom (+ Laden, − Entladen) |
 | `soc` | DOUBLE | PERCENT | % | SoC des BMS (0–100) |
 | `temp_mosfet` | DOUBLE | TEMPERATURE | deg.C | MOSFET-Temperatur, nur wenn geliefert |
-| `temp_1`, `temp_2`, … | DOUBLE | TEMPERATURE | deg.C | externe Fühler; nicht angeschlossene lässt aiobmsble weg |
+| `temp_1`, `temp_2`, … | DOUBLE | TEMPERATURE | deg.C | externe Fühler (JK: T1/T2, JBD: NTC-Fühler); nicht angeschlossene lässt aiobmsble weg |
 | `cell_01` … `cell_NN` | DOUBLE | VOLTAGE | V | Zellspannungen, Anzahl = `cell_count` |
 | `cell_delta` | DOUBLE | VOLTAGE | V | max − min der gelieferten Zellen (innerhalb `cell_count`, ab 2 Zellen) |
-| `status` | STRING | UNKNOWN | – | `OK`, `Charging`, `Discharging`, `Full` plus Fehlernamen (JK) bzw. `problem code 0x…` (ANT); `Disconnected` / `Stale` bei Ausfall |
+| `status` | STRING | UNKNOWN | – | `OK`, `Charging`, `Discharging`, `Full` plus Fehlernamen (JK, JBD) bzw. `problem code 0x…` (ANT); `Disconnected` / `Stale` bei Ausfall |
+
+Das JBD hat keinen MOSFET-Temperatursensor: Dort gibt es kein `temp_mosfet`, und die `temperature`
+im `BatteryState` ist die höchste Fühlertemperatur.
 
 Die Temperatursensoren entstehen erst mit dem ersten Datensatz, weil erst dann feststeht, welche
 Fühler das BMS liefert. Ihre Info wird dann latched nachveröffentlicht, und `xbot_monitoring`
@@ -273,6 +286,11 @@ einem Mäher getestet.
 
 - **JK:** aiobmsble sendet für JK kein Passwort (`accept_secret = False`); der Parameter wird mit
   einem Info-Log ignoriert. Nach allem, was bekannt ist, prüft nur die JK-App die PIN.
+- **JBD:** aiobmsble sendet das Passwort als Anmelde-Kommando, wenn eins gesetzt ist. Ein **falsches
+  Passwort lässt die Verbindung scheitern** (Log: `connect failed … PermissionError`), das BMS
+  gilt dann nie als verbunden. Ohne Passwort wird nichts gesendet. Ob dein JBD ein Passwort
+  verlangt, ist nicht geprüft: Zuerst ohne Passwort versuchen und nur eintragen, wenn die
+  Hersteller-App eins verlangt.
 - **ANT (neue Variante, `ant_bms`):** aiobmsble sendet das Passwort als Auth-Kommando, wenn gesetzt.
 - Beim ersten Hardwaretest prüfen, ob die Geräte ohne Passwort Daten liefern.
 
@@ -284,8 +302,10 @@ Tipp: Die BLE-Punkte lassen sich vorher am PC klären, siehe
 - [ ] `bridge/setup_venv.sh` gibt „aiobmsble OK“ aus
 - [ ] Log: „BMS bridge ready“, dann „BMS 'main_pack' connected (jikong_bms)“ und die Geräteinfo
 - [ ] `/battery_state/main_pack` mit der JK-App vergleichen (Spannung, Strom-Vorzeichen, SoC)
-- [ ] ANT: welches Modul wurde gewählt (Log „identified as“ bzw. Warnung „matches no … pattern“)?
-      Liefert es Daten? Falls nicht: `type: ant_leg` bzw. `ant_new` probieren.
+- [ ] JBD: Meldet sich der Akku mit einem Namen, den aiobmsble kennt? Sonst `type: jbd` fest setzen.
+      Stimmen Zellspannungen und Fühlertemperaturen mit der JBD-App überein?
+- [ ] ANT (falls vorhanden): welches Modul wurde gewählt (Log „identified as“ bzw. Warnung
+      „matches no … pattern“)? Liefert es Daten? Falls nicht: `type: ant_leg` bzw. `ant_new` probieren.
 - [ ] Passwort-Frage klären (siehe oben)
 - [ ] Ein BMS ausschalten: `present=False`, nach 30 s `UNKNOWN`, das andere läuft weiter;
       danach automatischer Reconnect
@@ -362,7 +382,7 @@ Das Programm wartet danach auf **eine Zeile** mit der Konfiguration. Einfügen (
 ein oder beide BMS) und Enter drücken:
 
 ```json
-{"devices":[{"name":"jk","type":"jk","mac":"C8:47:80:XX:XX:XX"},{"name":"ant","type":"ant","mac":"AA:BB:CC:XX:XX:XX"}],"log_level":"INFO"}
+{"devices":[{"name":"jk","type":"jk","mac":"C8:47:80:XX:XX:XX"},{"name":"jbd","type":"jbd","mac":"A5:C2:37:XX:XX:XX"}],"log_level":"INFO"}
 ```
 
 Pro Gerät sind `name`, `type` (wie in `bms_list`), `mac` und optional `password` möglich. Die
@@ -381,8 +401,10 @@ Bridge gibt dann JSON-Zeilen aus:
 Hinweise:
 - Die Hersteller-Apps vorher schließen: Ein BMS erlaubt nur eine BLE-Verbindung gleichzeitig.
 - MAC finden: unter Linux `bluetoothctl --timeout 15 scan on`, unter Windows z. B. mit der
-  Handy-App „nRF Connect“ (Gerätename `JK-…` bzw. `ANT-BLE…`).
+  Handy-App „nRF Connect“ (Gerätename `JK-…`, `JBD-…` bzw. `ANT-BLE…`).
 - Mehr Details: `"log_level":"DEBUG"` zeigt alle Bytes, die aiobmsble sendet und empfängt.
+- Verbindet sich ein JBD nicht und im Log steht `PermissionError` / „incorrect secret“, ist das
+  Passwort falsch oder gar nicht erwartet: `"password"` weglassen oder korrigieren.
 - Liefert ein ANT keine Daten: `"password":"1234"` im Geräteeintrag ergänzen bzw. `"type":"ant_leg"`
   oder `"type":"ant_new"` probieren. Die Einstellung, die funktioniert, genauso in `bms_list` übernehmen.
 - Werte mit der App vergleichen, vor allem Spannung, Vorzeichen des Stroms (+ Laden, − Entladen) und SoC.
@@ -431,11 +453,12 @@ Dieses Paket steht unter der **GNU General Public License v3.0** (`GPL-3.0-only`
   einem separaten Prozess (der Bridge) verwendet und nicht mitgeliefert; `bridge/setup_venv.sh`
   installiert es aus PyPI.
 - Die Testframes in `test/fixtures.py` stammen aus
-  [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) (Apache-2.0); der
+  [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms) und
+  [syssi/esphome-jbd-bms](https://github.com/syssi/esphome-jbd-bms) (jeweils Apache-2.0); der
   Herkunftshinweis steht in der Datei.
 
 ## Referenzen
 
 - [patman15/BMS_BLE-HA](https://github.com/patman15/BMS_BLE-HA) / [aiobmsble](https://pypi.org/p/aiobmsble/) (Apache-2.0)
-- [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms), [syssi/esphome-ant-bms](https://github.com/syssi/esphome-ant-bms) – Testframes in `test/fixtures.py`, JK-Fehlerbits
+- [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms), [syssi/esphome-jbd-bms](https://github.com/syssi/esphome-jbd-bms), [syssi/esphome-ant-bms](https://github.com/syssi/esphome-ant-bms) – Testframes in `test/fixtures.py`, JK- und JBD-Fehlerbits
 - [open_mower_ros](https://github.com/ClemensElflein/open_mower_ros) `mower_msgs`, `mower_logic`
