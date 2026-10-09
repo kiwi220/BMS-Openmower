@@ -241,7 +241,7 @@ class JbdTest(unittest.TestCase):
     def test_model(self):
         s = jbd_sample()
         self.assertEqual(s.vendor, "jbd")
-        self.assertIsNone(s.mosfet_temperature)                      # JBD has no MOSFET sensor
+        self.assertIsNone(s.mosfet_temperature)                      # aiobmsble reports none for JBD
         self.assertEqual(s.sensor_temperatures, [22.4, 22.3, 21.7])  # aiobmsble types them CELL
         self.assertEqual(s.state_temperature, 22.4)                   # hottest available
         self.assertEqual(len(s.cell_voltages), 4)

@@ -127,7 +127,7 @@ pack_connection: ""               # series | parallel -> battery_state/combined
 | `pack_connection` | `""` | `series`/`parallel`: aggregiertes `battery_state/combined` (nur bei > 1 BMS) |
 | `bridge_python` | `~/.local/share/bms_ble/venv/bin/python` | Interpreter der Bridge |
 | `bridge_log_level` | `WARNING` | Log-Level von aiobmsble (wird nach rosout weitergeleitet) |
-| `max_connections` | `4` | max. gleichzeitige BLE-Verbindungen des Adapters |
+| `max_connections` | `4` | max. gleichzeitige BLE-Verbindungen des Adapters (ganze Zahl ≥ 1). Zeit- und Intervall-Parameter müssen > 0 sein, sonst startet der Node nicht und nennt den Parameter |
 | `reconnect_interval_s` | `5.0` | Wartezeit bis zum nächsten Versuch |
 | `scan_timeout_s` | `10.0` | Suchdauer je Versuch |
 | `connect_timeout_s` | `45.0` | hartes Limit für Verbinden + erste Messung |
@@ -144,7 +144,7 @@ Die alten Einzelparameter (`bms_mac_address`, `cell_count`, …) funktionieren w
 **Typen:**
 - `jk`: aiobmsble `jikong_bms`.
 - `jbd`: aiobmsble `jbd_bms`. aiobmsble erkennt JBD nur an bestimmten Namen (`JBD-*` und einige
-  OEM-Namen) und Herstellerkennungen. Meldet sich dein Akku anders, steht bei `type: auto` eine
+  OEM-Namen) und an bestimmten MAC-Adress-Präfixen. Meldet sich dein Akku anders, steht bei `type: auto` eine
   Warnung („not recognized“) und, wenn er den JBD-Dienst `ff00` anbietet, der Hinweis „try type: jbd“.
   Mit `type: jbd` wird der Name nicht geprüft.
 - `ant`: wählt anhand des Gerätenamens `ant_leg_bms` (`ANT-BLE[01]*`, `ANT-BLE22*`) oder
@@ -183,6 +183,10 @@ Fehlercode, Zyklen und SOH stehen auf `/diagnostics`.
   Übertemperatur → `OVERHEAT`, Untertemperatur → `COLD`. Jedes andere gesetzte Bit (Überstrom,
   Kurzschluss, IC-Fehler, MOSFET-Software-Sperre, Ladezeit-Timeout, undokumentierte Bits) wird als
   `UNSPEC_FAILURE` gemeldet statt ignoriert: Beim JBD bedeutet jedes Bit einen aktiven Schutz.
+  **Hinweis:** Endet das Laden über den Zellüberspannungsschutz des JBD, steht bei vollem Akku
+  `OVERVOLTAGE` an (in `/diagnostics` als Fehler, im xbot-Status z. B. `Full, Cell overvoltage`).
+  Der echte Mitschnitt in `test/fixtures.py` zeigt genau diesen Zustand: 100 %, Schutz aktiv,
+  Lade-MOSFET aus. Gemeldet wird der tatsächliche Schutzzustand des BMS.
 - **ANT:** aiobmsble setzt `problem_code` aus MOSFET-Statuscodes zusammen, deren Byte-Reihenfolge
   zwischen den ANT-Varianten nicht eindeutig dokumentiert ist. Jedes gemeldete Problem wird daher
   als `UNSPEC_FAILURE` gemeldet statt geraten; der Rohcode steht in `/diagnostics`.
@@ -243,8 +247,8 @@ es, gibt der Node eine Warnung aus und läuft ohne diese Sensoren weiter.
 | `cell_delta` | DOUBLE | VOLTAGE | V | max − min der gelieferten Zellen (innerhalb `cell_count`, ab 2 Zellen) |
 | `status` | STRING | UNKNOWN | – | `OK`, `Charging`, `Discharging`, `Full` plus Fehlernamen (JK, JBD) bzw. `problem code 0x…` (ANT); `Disconnected` / `Stale` bei Ausfall |
 
-Das JBD hat keinen MOSFET-Temperatursensor: Dort gibt es kein `temp_mosfet`, und die `temperature`
-im `BatteryState` ist die höchste Fühlertemperatur.
+aiobmsble meldet beim JBD alle Fühler als Zelltemperaturen und keine MOSFET-Temperatur: Dort gibt es
+kein `temp_mosfet`, und die `temperature` im `BatteryState` ist die höchste Fühlertemperatur.
 
 Die Temperatursensoren entstehen erst mit dem ersten Datensatz, weil erst dann feststeht, welche
 Fühler das BMS liefert. Ihre Info wird dann latched nachveröffentlicht, und `xbot_monitoring`

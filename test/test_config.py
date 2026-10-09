@@ -7,7 +7,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
-from bms_ble.config import parse_bms_list, parse_pack_connection  # noqa: E402
+from bms_ble.config import parse_bms_list, parse_pack_connection, parse_positive  # noqa: E402
 
 
 def entry(**kw):
@@ -81,6 +81,23 @@ class JbdTypeTest(unittest.TestCase):
         self.assertEqual([d.type for d in devs], ["jk", "jbd"])
         self.assertEqual(devs[1].bridge_dict()["password"], "123456")
         self.assertEqual(devs[1].bridge_dict()["type"], "jbd")
+
+
+class PositiveTest(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(parse_positive("x", 5), 5.0)
+        self.assertEqual(parse_positive("x", "0.5"), 0.5)
+        self.assertEqual(parse_positive("max_connections", 4, integer=True), 4)
+        self.assertEqual(parse_positive("max_connections", 2.0, integer=True), 2)
+
+    def test_invalid(self):
+        for bad in (0, -1, "abc", None, float("nan")):
+            with self.assertRaises(ValueError):
+                parse_positive("reconnect_interval_s", bad)
+        for bad in (0, -2, 1.5, "x"):  # 0 would make the bridge wait forever for a free slot
+            with self.assertRaises(ValueError) as ctx:
+                parse_positive("max_connections", bad, integer=True)
+            self.assertIn("max_connections", str(ctx.exception))
 
 
 if __name__ == "__main__":

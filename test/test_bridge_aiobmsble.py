@@ -257,6 +257,25 @@ class BridgeAiobmsbleTest(unittest.TestCase):
         self.assertTrue(any("connection lost" in w for w in warnings), warnings)
 
 
+    def test_unexpected_error_does_not_end_the_device_loop(self):
+        # e.g. an import error inside aiobmsble while resolving the type: the
+        # BMS must still be retried, otherwise it would never reconnect
+        calls = []
+        orig = bms_bridge.Bridge.resolve_class
+
+        async def flaky(bridge, dev, device, adv):
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("boom")
+            return await orig(bridge, dev, device, adv)
+
+        bms_bridge.Bridge.resolve_class = flaky
+        self.addCleanup(setattr, bms_bridge.Bridge, "resolve_class", orig)
+        self.run_bridge("jk", lambda t: len(t.events("sample")) >= 1)
+        self.assertTrue(self.events("sample"))
+        errors = [e["msg"] for e in self.events("log") if e["level"] == "error"]
+        self.assertTrue(any("unexpected error (RuntimeError: boom)" in m for m in errors), errors)
+
     def test_jk_password_is_not_sent(self):
         old_level = bms_bridge.log.level
         bms_bridge.log.setLevel(logging.INFO)  # main() does this in production
@@ -352,6 +371,7 @@ class JbdBridgeTest(BridgeAiobmsbleTest):
     test_auto_detects_jk_by_manufacturer_id = None
     test_link_loss_is_reported_and_reconnected = None
     test_jk_password_is_not_sent = None
+    test_unexpected_error_does_not_end_the_device_loop = None
 
 
 @unittest.skipIf(SKIP_REASON, SKIP_REASON)
@@ -401,6 +421,7 @@ class MixedBmsTest(BridgeAiobmsbleTest):
     test_auto_detects_jk_by_manufacturer_id = None
     test_link_loss_is_reported_and_reconnected = None
     test_jk_password_is_not_sent = None
+    test_unexpected_error_does_not_end_the_device_loop = None
 
 
 @unittest.skipIf(SKIP_REASON, SKIP_REASON)
@@ -437,6 +458,7 @@ class ConnectionLimitTest(BridgeAiobmsbleTest):
     test_auto_detects_jk_by_manufacturer_id = None
     test_link_loss_is_reported_and_reconnected = None
     test_jk_password_is_not_sent = None
+    test_unexpected_error_does_not_end_the_device_loop = None
 
 
 @unittest.skipIf(SKIP_REASON, SKIP_REASON)
