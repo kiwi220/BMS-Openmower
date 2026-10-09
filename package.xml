@@ -3,7 +3,7 @@
   <name>bms_ble</name>
   <version>0.2.0</version>
   <description>
-    Reads one or more BLE battery management systems (JK-BMS, ANT-BMS) via the
+    Reads one or more BLE battery management systems (JK-BMS, JBD-BMS, ANT-BMS) via the
     aiobmsble library and publishes sensor_msgs/BatteryState, optionally
     mower_msgs/Bms for OpenMower.
   </description>

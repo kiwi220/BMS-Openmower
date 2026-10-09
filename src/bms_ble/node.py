@@ -22,7 +22,7 @@ from sensor_msgs.msg import BatteryState
 from . import battery_logic as bl
 from . import conversion
 from .bridge_client import BridgeClient
-from .config import (COMBINED_NAME, DeviceConfig, parse_bms_list, parse_pack_connection,
+from .config import (COMBINED_NAME, DeviceConfig, parse_bms_list, parse_pack_connection, parse_positive,
                      parse_xbot_rate, parse_xbot_sensor_bms)
 from .model import BmsSample
 from .xbot_sensors import XbotSensorPublisher
@@ -91,10 +91,8 @@ class BmsNode:
         if legacy and rospy.has_param("~bms_list"):
             rospy.logwarn("Both bms_list and legacy single-BMS parameters set; using bms_list")
 
-        self.publish_rate = float(rospy.get_param("~publish_rate_hz", 1.0))
-        if self.publish_rate <= 0:
-            raise ValueError("publish_rate_hz must be > 0")
-        self.stale_timeout = float(rospy.get_param("~stale_timeout_s", 30.0))
+        self.publish_rate = parse_positive("publish_rate_hz", rospy.get_param("~publish_rate_hz", 1.0))
+        self.stale_timeout = parse_positive("stale_timeout_s", rospy.get_param("~stale_timeout_s", 30.0))
         self.frame_id = str(rospy.get_param("~frame_id", "battery"))
         self.pack_connection = parse_pack_connection(rospy.get_param("~pack_connection", ""))
 
@@ -103,17 +101,19 @@ class BmsNode:
         self.queue = queue.Queue(maxsize=500)
         bridge_python = os.path.expanduser(str(rospy.get_param("~bridge_python", DEFAULT_BRIDGE_PYTHON)))
         bridge_script = os.path.expanduser(str(rospy.get_param("~bridge_script", "") or _default_bridge_script()))
-        reconnect = float(rospy.get_param("~reconnect_interval_s", 5.0))
+        reconnect = parse_positive("reconnect_interval_s", rospy.get_param("~reconnect_interval_s", 5.0))
         self.bridge = BridgeClient(
             [bridge_python, "-u", bridge_script],
             {
                 "devices": [d.cfg.bridge_dict() for d in self.devices],
                 "poll_interval": 1.0 / self.publish_rate,
                 "reconnect_interval": reconnect,
-                "scan_timeout": float(rospy.get_param("~scan_timeout_s", 10.0)),
-                "connect_timeout": float(rospy.get_param("~connect_timeout_s", 45.0)),
-                "update_timeout": float(rospy.get_param("~update_timeout_s", 20.0)),
-                "max_connections": int(rospy.get_param("~max_connections", 4)),
+                "scan_timeout": parse_positive("scan_timeout_s", rospy.get_param("~scan_timeout_s", 10.0)),
+                "connect_timeout": parse_positive("connect_timeout_s", rospy.get_param("~connect_timeout_s", 45.0)),
+                "update_timeout": parse_positive("update_timeout_s", rospy.get_param("~update_timeout_s", 20.0)),
+                "max_connections": parse_positive(
+                    "max_connections", rospy.get_param("~max_connections", 4), integer=True
+                ),
                 "log_level": str(rospy.get_param("~bridge_log_level", "WARNING")),
             },
             self.queue,
@@ -367,7 +367,7 @@ class BmsNode:
                 ("cycles", "NA" if s.cycles is None else s.cycles),
                 ("problem_code", "0x%X" % s.problem_code),
             ]
-            errors = bl.jk_error_names(s.problem_code) if s.vendor == "jk" else []
+            errors = bl.error_names(s.vendor, s.problem_code)
             if errors:
                 values.append(("errors", ", ".join(errors)))
             health = bl.power_supply_health(s.vendor, s.problem_code, s.problem)

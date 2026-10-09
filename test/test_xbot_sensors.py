@@ -302,5 +302,52 @@ class RealMessageTest(unittest.TestCase):
         msg.serialize(__import__("io").BytesIO())
 
 
+JBD = DeviceConfig("pack_jbd", "jbd", "A5:C2:37:00:00:01", cell_count=4, nominal_capacity_ah=5.0, primary=True)
+
+
+def jbd_sample(base=None, **changes):
+    data = copy.deepcopy(base or fixtures.JBD_SAMPLE_4S)
+    data.update(changes)
+    return BmsSample.from_bridge("jbd_bms", data)
+
+
+class JbdSensorTest(unittest.TestCase):
+    def test_sensor_values(self):
+        values = dict(xs.sensor_values(JBD, jbd_sample(), connected=True, stale=False))
+        self.assertAlmostEqual(values["bms_pack_jbd_voltage"], 15.60)
+        self.assertEqual(values["bms_pack_jbd_soc"], 100.0)
+        self.assertEqual([values["bms_pack_jbd_temp_%d" % i] for i in (1, 2, 3)], [22.4, 22.3, 21.7])
+        self.assertNotIn("bms_pack_jbd_temp_mosfet", values)
+        self.assertEqual([values["bms_pack_jbd_cell_%02d" % i] for i in (1, 2, 3, 4)],
+                         [3.909, 3.901, 3.895, 3.901])
+        self.assertAlmostEqual(values["bms_pack_jbd_cell_delta"], 0.014)
+        self.assertEqual(values["bms_pack_jbd_status"], "Full")
+
+    def test_status_with_protection(self):
+        s = jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE)
+        self.assertEqual(xs.status_text(s), "Full, Cell overvoltage")
+        self.assertEqual(xs.status_text(jbd_sample(current=-2.0, battery_level=50, problem_code=1 << 3 | 1 << 10)),
+                         "Discharging, Pack undervoltage, Short circuit")
+
+    def test_problem_flag_without_code_is_ok(self):
+        self.assertEqual(xs.status_text(jbd_sample(battery_level=50, problem=True, problem_code=0)), "OK")
+        self.assertEqual(xs.status_text(jk_sample(battery_level=50, problem=True, problem_code=0)), "OK")
+
+    def test_late_registration_has_probes_but_no_mosfet_temperature(self):
+        factory = Factory()
+        pub = xs.XbotSensorPublisher([JBD], factory, FakeSensorInfo, FakeDouble, FakeString, 1.0)
+        added = pub.update(JBD, jbd_sample())
+        self.assertEqual(added, ["bms_pack_jbd_temp_1", "bms_pack_jbd_temp_2", "bms_pack_jbd_temp_3"])
+        self.assertTrue(factory.pubs["/xbot_monitoring/sensors/bms_pack_jbd_temp_1/info"].latch)
+
+    def test_ids_unique_with_jk_and_jbd(self):
+        factory = Factory()
+        pub = xs.XbotSensorPublisher([MAIN, JBD], factory, FakeSensorInfo, FakeDouble, FakeString, 1.0)
+        pub.update(MAIN, jk_sample())
+        pub.update(JBD, jbd_sample())
+        self.assertEqual(len(pub.sensor_ids), len(set(pub.sensor_ids)))
+        self.assertFalse(any(i.startswith("om_") for i in pub.sensor_ids))
+
+
 if __name__ == "__main__":
     unittest.main()

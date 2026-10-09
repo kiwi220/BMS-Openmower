@@ -39,7 +39,12 @@ from aiobmsble.utils import bms_cls, bms_identify, bms_supported
 PROTOCOL_VERSION = 1
 
 # config "type" -> aiobmsble module; "ant" and "auto" are resolved at runtime
-TYPE_MODULES = {"jk": "jikong_bms", "ant_leg": "ant_leg_bms", "ant_new": "ant_bms"}
+TYPE_MODULES = {"jk": "jikong_bms", "jbd": "jbd_bms", "ant_leg": "ant_leg_bms", "ant_new": "ant_bms"}
+
+# aiobmsble's jbd_bms talks to this GATT service, so a JBD it can read must
+# offer it; names vary and not all are in aiobmsble's matcher list. Used for a
+# hint only, never to pick a type (other devices may use ff00 as well).
+JBD_SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb"
 
 log = logging.getLogger("bms_bridge")
 
@@ -190,9 +195,14 @@ class Bridge:
                 log.info("%s: '%s' identified as %s", dev.name, name, module_name(cls))
                 return cls
             if not name.upper().startswith("ANT"):
+                hint = (
+                    "; it advertises the JBD service (ff00), try type: jbd"
+                    if JBD_SERVICE_UUID in [u.lower() for u in adv.service_uuids]
+                    else ""
+                )
                 log.warning(
-                    "%s: device '%s' (%s) not recognized by aiobmsble; set type: jk or ant explicitly",
-                    dev.name, name, dev.mac,
+                    "%s: device '%s' (%s) not recognized by aiobmsble%s; set type: jk, jbd or ant explicitly",
+                    dev.name, name, dev.mac, hint,
                 )
                 return None
             log.warning("%s: '%s' not recognized, name suggests ANT", dev.name, name)
@@ -229,34 +239,44 @@ class Bridge:
     # ---- per device loop
 
     async def run_device(self, dev: DeviceConfig) -> None:
-        misses = 0
+        state = {"misses": 0}
         while not self.stop_event.is_set():
             try:
-                found = await self.find_device(dev)
-            except Exception as exc:
-                log.warning("%s: scan failed (%s: %s)", dev.name, type(exc).__name__, exc)
-                found = None
-            if found is None:
-                misses += 1
-                if misses == 1 or misses % 10 == 0:
-                    log.warning("%s: %s not found (scan #%d)", dev.name, dev.mac, misses)
+                await self._attempt(dev, state)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # never let one BMS's task die: it would not reconnect again
+                log.error("%s: unexpected error (%s: %s), retrying", dev.name, type(exc).__name__, exc)
                 await self._sleep(self.cfg.reconnect_interval)
-                continue
-            misses = 0
 
-            cls = await self.resolve_class(dev, *found)
-            if cls is None:
-                await self._sleep(max(self.cfg.reconnect_interval, 30.0))
-                continue
-
-            if self._slots.locked():
-                log.warning(
-                    "%s: adapter connection limit reached (max_connections=%d, connected: %s); waiting",
-                    dev.name, self.cfg.max_connections, ", ".join(sorted(self._connected)) or "-",
-                )
-            async with self._slots:
-                await self._session(dev, cls, found[0])
+    async def _attempt(self, dev: DeviceConfig, state: dict) -> None:
+        """One scan -> resolve -> session cycle including the wait afterwards."""
+        try:
+            found = await self.find_device(dev)
+        except Exception as exc:
+            log.warning("%s: scan failed (%s: %s)", dev.name, type(exc).__name__, exc)
+            found = None
+        if found is None:
+            state["misses"] += 1
+            if state["misses"] == 1 or state["misses"] % 10 == 0:
+                log.warning("%s: %s not found (scan #%d)", dev.name, dev.mac, state["misses"])
             await self._sleep(self.cfg.reconnect_interval)
+            return
+        state["misses"] = 0
+
+        cls = await self.resolve_class(dev, *found)
+        if cls is None:
+            await self._sleep(max(self.cfg.reconnect_interval, 30.0))
+            return
+
+        if self._slots.locked():
+            log.warning(
+                "%s: adapter connection limit reached (max_connections=%d, connected: %s); waiting",
+                dev.name, self.cfg.max_connections, ", ".join(sorted(self._connected)) or "-",
+            )
+        async with self._slots:
+            await self._session(dev, cls, found[0])
+        await self._sleep(self.cfg.reconnect_interval)
 
     async def _session(self, dev: DeviceConfig, cls: type[BaseBMS], device: BLEDevice) -> None:
         secret = dev.password if cls.accept_secret else ""

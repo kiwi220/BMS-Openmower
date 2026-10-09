@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 VENDOR_BY_MODULE = {
     "jikong_bms": "jk",
+    "jbd_bms": "jbd",
     "ant_bms": "ant",
     "ant_leg_bms": "ant",
 }
@@ -74,8 +75,12 @@ class BmsSample:
 
     @property
     def sensor_temperatures(self) -> List[float]:
-        """External probes (JK: T1, T2, ...). Unplugged probes ("NA") are omitted by aiobmsble."""
-        return [t.value for t in self.temperatures if t.type == "GENERIC"]
+        """External probes (JK: T1, T2, ...; JBD: NTCs, typed CELL by aiobmsble).
+
+        Unplugged probes ("NA") are omitted by aiobmsble. MOSFET and balancer
+        temperatures are not probes.
+        """
+        return [t.value for t in self.temperatures if t.type in ("GENERIC", "CELL")]
 
     @classmethod
     def from_bridge(cls, bms_type: str, data: Dict[str, Any]) -> "BmsSample":

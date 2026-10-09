@@ -65,6 +65,36 @@ JK_HEALTH_GROUPS = (
     (POWER_SUPPLY_HEALTH_UNSPEC_FAILURE, _mask(2, 6, 7, 10, 13, 14)),
 )
 
+# JBD protection status (register 0x03, "problem_code" in aiobmsble is the raw
+# 16 bit value), index = bit number; from esphome-jbd-bms.
+JBD_ERROR_NAMES = (
+    "Cell overvoltage",               # bit 0
+    "Cell undervoltage",              # bit 1
+    "Pack overvoltage",               # bit 2
+    "Pack undervoltage",              # bit 3
+    "Charging over temperature",      # bit 4
+    "Charging under temperature",     # bit 5
+    "Discharging over temperature",   # bit 6
+    "Discharging under temperature",  # bit 7
+    "Charging overcurrent",           # bit 8
+    "Discharging overcurrent",        # bit 9
+    "Short circuit",                  # bit 10
+    "IC front-end error",             # bit 11
+    "MOSFET software lock",           # bit 12
+    "Charge timeout close",           # bit 13
+)
+
+# JBD bits by BatteryState health, priority order. Every JBD protection bit
+# means a protection is active, so any other set bit (including the
+# undocumented bits 14/15) is reported as UNSPEC_FAILURE rather than ignored.
+JBD_HEALTH_GROUPS = (
+    (POWER_SUPPLY_HEALTH_DEAD, _mask(1, 3)),                   # cell / pack undervoltage
+    (POWER_SUPPLY_HEALTH_OVERVOLTAGE, _mask(0, 2)),            # cell / pack overvoltage
+    (POWER_SUPPLY_HEALTH_OVERHEAT, _mask(4, 6)),               # charge / discharge over temperature
+    (POWER_SUPPLY_HEALTH_COLD, _mask(5, 7)),                   # charge / discharge under temperature
+)
+JBD_PROTECTION_MASK = 0xFFFF
+
 # Severity used when several packs are combined (worst wins)
 HEALTH_SEVERITY = {
     POWER_SUPPLY_HEALTH_GOOD: 0,
@@ -84,6 +114,26 @@ def jk_error_names(bitmask: int) -> List[str]:
             name = JK_ERROR_NAMES[bit] if bit < len(JK_ERROR_NAMES) else ""
             names.append(name or "Unknown error bit %d" % bit)
     return names
+
+
+def jbd_error_names(bitmask: int) -> List[str]:
+    names = []
+    for bit in range(16):
+        if bitmask & (1 << bit):
+            names.append(JBD_ERROR_NAMES[bit] if bit < len(JBD_ERROR_NAMES) else "Unknown error bit %d" % bit)
+    return names
+
+
+NAMED_ERROR_VENDORS = ("jk", "jbd")  # vendors whose problem_code bit layout is documented
+
+
+def error_names(vendor: str, problem_code: int) -> List[str]:
+    """Readable names of the set error bits; empty for vendors whose code layout is not known."""
+    if vendor == "jk":
+        return jk_error_names(problem_code)
+    if vendor == "jbd":
+        return jbd_error_names(problem_code)
+    return []
 
 
 def power_supply_status(current: Optional[float], state_of_charge: Optional[float]) -> int:
@@ -113,10 +163,20 @@ def jk_health(error_bitmask: int) -> int:
     return POWER_SUPPLY_HEALTH_GOOD
 
 
+def jbd_health(protection_status: int) -> int:
+    for health, mask in JBD_HEALTH_GROUPS:
+        if protection_status & mask:
+            return health
+    if protection_status & JBD_PROTECTION_MASK:
+        return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE  # overcurrent, short circuit, IC error, lock, timeout, unknown
+    return POWER_SUPPLY_HEALTH_GOOD
+
+
 def power_supply_health(vendor: str, problem_code: int, problem: bool, stale: bool = False) -> int:
     """Health of one pack; UNKNOWN when the data is stale.
 
-    JK: problem_code is the JK error bitmask -> DEAD / OVERVOLTAGE / ... .
+    JK, JBD: problem_code is the vendor's error / protection bitmask ->
+    DEAD / OVERVOLTAGE / OVERHEAT / COLD / UNSPEC_FAILURE.
     Others (ANT, ...): aiobmsble packs vendor specific status codes into
     problem_code whose byte layout is not documented consistently, so any
     reported problem is mapped to UNSPEC_FAILURE rather than guessed.
@@ -125,6 +185,8 @@ def power_supply_health(vendor: str, problem_code: int, problem: bool, stale: bo
         return POWER_SUPPLY_HEALTH_UNKNOWN
     if vendor == "jk":
         return jk_health(problem_code)
+    if vendor == "jbd":
+        return jbd_health(problem_code)
     if problem_code or problem:
         return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE
     return POWER_SUPPLY_HEALTH_GOOD

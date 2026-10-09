@@ -228,5 +228,73 @@ class RosMessageTest(unittest.TestCase):
         msg.serialize(buf)  # type/field check of the real message
 
 
+JBD = DeviceConfig("pack_jbd", "jbd", "A5:C2:37:00:00:01", cell_count=4, nominal_capacity_ah=5.0)
+
+
+def jbd_sample(base=None, **changes):
+    data = copy.deepcopy(base or fixtures.JBD_SAMPLE_4S)
+    data.update(changes)
+    return BmsSample.from_bridge("jbd_bms", data)
+
+
+class JbdTest(unittest.TestCase):
+    def test_model(self):
+        s = jbd_sample()
+        self.assertEqual(s.vendor, "jbd")
+        self.assertIsNone(s.mosfet_temperature)                      # aiobmsble reports none for JBD
+        self.assertEqual(s.sensor_temperatures, [22.4, 22.3, 21.7])  # aiobmsble types them CELL
+        self.assertEqual(s.state_temperature, 22.4)                   # hottest available
+        self.assertEqual(len(s.cell_voltages), 4)
+        self.assertTrue(s.charge_mosfet)
+
+    def test_probe_types(self):
+        # CELL counts as external probe, MOSFET and BALANCER do not
+        s = BmsSample.from_bridge("ant_bms", {"temp_values": [
+            {"value": 20.0, "type": "GENERIC"}, {"value": 21.0, "type": "CELL"},
+            {"value": 30.0, "type": "MOSFET"}, {"value": 25.0, "type": "BALANCER"}]})
+        self.assertEqual(s.sensor_temperatures, [20.0, 21.0])
+        self.assertEqual(s.state_temperature, 30.0)   # hottest of all, as before for ANT
+
+    def test_battery_state(self):
+        msg = state(jbd_sample(), device=JBD)
+        self.assertAlmostEqual(msg.voltage, 15.60)
+        self.assertAlmostEqual(msg.current, 0.0)
+        self.assertAlmostEqual(msg.percentage, 1.0)
+        self.assertAlmostEqual(msg.charge, 4.98)        # remaining Ah from the BMS
+        self.assertAlmostEqual(msg.capacity, 5.0)       # capacity reported by the BMS
+        self.assertAlmostEqual(msg.design_capacity, 5.0)
+        self.assertAlmostEqual(msg.temperature, 22.4)
+        self.assertEqual(msg.cell_voltage, [3.909, 3.901, 3.895, 3.901])
+        self.assertEqual(msg.power_supply_status, bl.POWER_SUPPLY_STATUS_FULL)   # 100 %, no current
+        self.assertEqual(msg.power_supply_health, bl.POWER_SUPPLY_HEALTH_GOOD)
+        self.assertTrue(msg.present)
+
+    def test_charging_and_discharging_signs(self):
+        self.assertEqual(state(jbd_sample(current=3.0, battery_level=80), device=JBD).power_supply_status,
+                         bl.POWER_SUPPLY_STATUS_CHARGING)
+        dis = state(jbd_sample(current=-2.5, battery_level=80), device=JBD)
+        self.assertAlmostEqual(dis.current, -2.5)
+        self.assertEqual(dis.power_supply_status, bl.POWER_SUPPLY_STATUS_DISCHARGING)
+
+    def test_real_cell_overvoltage_capture(self):
+        s = jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE)
+        msg = state(s, device=DeviceConfig("big", "jbd", "A5:C2:37:00:00:02", 4, 280.0))
+        self.assertEqual(msg.power_supply_health, bl.POWER_SUPPLY_HEALTH_OVERVOLTAGE)
+        self.assertAlmostEqual(msg.voltage, 14.28)
+        bms = conversion.bms_message(FakeBms, s, False, "stamp")
+        self.assertIn("ALARM: Cell overvoltage", bms.battery_status)
+        self.assertEqual(json.loads(bms.extra_data)["problem_code"], 1)
+
+    def test_stale(self):
+        msg = state(jbd_sample(fixtures.JBD_SAMPLE_CELL_OVERVOLTAGE), device=JBD, connected=False, stale=True)
+        self.assertEqual(msg.power_supply_health, bl.POWER_SUPPLY_HEALTH_UNKNOWN)
+
+    def test_problem_flag_without_code_gives_no_alarm(self):
+        # aiobmsble sets "problem" for sanity checks too; same behaviour as for JK
+        for s in (jbd_sample(problem=True, problem_code=0), jk_sample(problem=True, problem_code=0)):
+            self.assertNotIn("ALARM", conversion.bms_message(FakeBms, s, False, "stamp").battery_status)
+            self.assertEqual(state(s).power_supply_health, bl.POWER_SUPPLY_HEALTH_GOOD)
+
+
 if __name__ == "__main__":
     unittest.main()

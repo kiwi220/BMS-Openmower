@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-BASE_TYPES = ("jk", "ant", "ant_leg", "ant_new", "auto")
+BASE_TYPES = ("jk", "jbd", "ant", "ant_leg", "ant_new", "auto")
 PACK_CONNECTIONS = ("", "series", "parallel")
 COMBINED_NAME = "combined"
 
@@ -103,6 +103,25 @@ def parse_pack_connection(value: Any) -> str:
     if value not in PACK_CONNECTIONS:
         raise ValueError("pack_connection must be empty, 'series' or 'parallel', got '%s'" % value)
     return value
+
+
+def parse_positive(name: str, value: Any, integer: bool = False) -> Any:
+    """A number > 0 (an int >= 1 with integer=True), else ValueError naming the parameter.
+
+    Guards the bridge against values that would hang it (max_connections 0
+    never connects anything) or make it spin (reconnect interval 0).
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a number, got '%s'" % (name, value))
+    if integer:
+        if number != int(number) or number < 1:
+            raise ValueError("%s must be a whole number >= 1, got %s" % (name, value))
+        return int(number)
+    if not number > 0:
+        raise ValueError("%s must be > 0, got %s" % (name, value))
+    return number
 
 
 XBOT_MAX_RATE_HZ = 2.0  # OpenMower throttles its own sensors to 2 Hz

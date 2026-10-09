@@ -1,14 +1,14 @@
 # bms_ble configuration. One entry per BMS; a single entry works the same way.
 bms_list:
   - name: main_pack               # topic: battery_state/main_pack
-    type: jk                      # jk | ant | ant_leg | ant_new | auto (or an aiobmsble module, e.g. jikong_bms)
+    type: jk                      # jk | jbd | ant | ant_leg | ant_new | auto (or an aiobmsble module, e.g. jikong_bms)
     mac: "AA:BB:CC:DD:EE:FF"      # bluetoothctl scan on -> "JK-BD4A8S-4P"
     cell_count: 7
     nominal_capacity_ah: 10.0
-    ble_connect_password: ""      # only used by BMS types that support it in aiobmsble (ANT new)
+    ble_connect_password: ""      # only used by BMS types that support it in aiobmsble (JBD, ANT new)
     primary: true                 # additionally published on /battery_state
 # - name: second_pack
-#   type: ant                     # "ANT-BLE..." devices; ant_leg / ant_new to force a variant
+#   type: jbd                     # JBD (Jiabaida, "JBD-..."); or ant for "ANT-BLE..." devices
 #   mac: "11:22:33:44:55:66"
 #   cell_count: 7
 #   nominal_capacity_ah: 10.0

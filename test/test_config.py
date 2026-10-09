@@ -7,7 +7,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
-from bms_ble.config import parse_bms_list, parse_pack_connection  # noqa: E402
+from bms_ble.config import parse_bms_list, parse_pack_connection, parse_positive  # noqa: E402
 
 
 def entry(**kw):
@@ -65,6 +65,39 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(parse_pack_connection("Series"), "series")
         with self.assertRaises(ValueError):
             parse_pack_connection("mixed")
+
+
+class JbdTypeTest(unittest.TestCase):
+    def test_jbd_type_accepted(self):
+        (d,) = parse_bms_list([entry(type="JBD", name="pack_jbd")])
+        self.assertEqual(d.type, "jbd")
+        self.assertEqual(parse_bms_list([entry(type="jbd_bms")])[0].type, "jbd_bms")  # aiobmsble module name
+
+    def test_jk_and_jbd_together(self):
+        devs = parse_bms_list([
+            entry(primary=True),
+            entry(name="pack_jbd", type="jbd", mac="A5:C2:37:00:00:01", cell_count=4, ble_connect_password="123456"),
+        ])
+        self.assertEqual([d.type for d in devs], ["jk", "jbd"])
+        self.assertEqual(devs[1].bridge_dict()["password"], "123456")
+        self.assertEqual(devs[1].bridge_dict()["type"], "jbd")
+
+
+class PositiveTest(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(parse_positive("x", 5), 5.0)
+        self.assertEqual(parse_positive("x", "0.5"), 0.5)
+        self.assertEqual(parse_positive("max_connections", 4, integer=True), 4)
+        self.assertEqual(parse_positive("max_connections", 2.0, integer=True), 2)
+
+    def test_invalid(self):
+        for bad in (0, -1, "abc", None, float("nan")):
+            with self.assertRaises(ValueError):
+                parse_positive("reconnect_interval_s", bad)
+        for bad in (0, -2, 1.5, "x"):  # 0 would make the bridge wait forever for a free slot
+            with self.assertRaises(ValueError) as ctx:
+                parse_positive("max_connections", bad, integer=True)
+            self.assertIn("max_connections", str(ctx.exception))
 
 
 if __name__ == "__main__":

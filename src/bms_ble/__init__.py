@@ -1,1 +1,1 @@
-"""BLE battery management systems (JK, ANT via aiobmsble) for ROS 1 / OpenMower."""
+"""BLE battery management systems (JK, JBD, ANT via aiobmsble) for ROS 1 / OpenMower."""
